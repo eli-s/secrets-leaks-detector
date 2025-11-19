@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  aws-secret-scanner:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    volumes:
+      - scan-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  scan-data:
