@@ -1,10 +1,10 @@
-# AWS Secret Scanner
+# Secrets Leaks Detector
 
 A security-focused web application that scans GitHub repositories to detect leaked AWS credentials in commit history. This tool helps identify potential security breaches by finding AWS access keys, secret keys, and session tokens that may have been accidentally committed to version control.
 
 ## 🔍 What This App Does
 
-The AWS Secret Scanner provides comprehensive security scanning for GitHub repositories by:
+The Secrets Leaks Detector provides comprehensive security scanning for GitHub repositories by:
 
 - **Scanning Git History**: Analyzes all commits in chronological order to find when secrets were introduced or removed
 - **Detecting AWS Credentials**: Uses advanced pattern matching to identify various types of AWS credentials
@@ -44,8 +44,8 @@ The AWS Secret Scanner provides comprehensive security scanning for GitHub repos
 
 ```bash
 # Clone the repository
-git clone <repository-url>
-cd aws-secret-scanner
+git clone https://github.com/eli-s/secrets-leaks-detector.git
+cd secrets-leaks-detector
 
 # Install dependencies
 npm install
@@ -94,9 +94,9 @@ Content-Type: application/json
   "owner": "username",
   "repo": "repository",
   "token": "ghp_your_github_token_here",
-  "includeNonMainBranches": false,
-  "resume": false,
-  "excludePaths": ["**/test/**", "**/tests/**", "**/*.test.js"]
+  "includeNonMainBranches": false, // optional
+  "resume": false, // optional
+  "excludePaths": ["**/test/**", "**/tests/**", "**/*.test.js"] // optional
 }
 ```
 
@@ -475,3 +475,7 @@ MIT License - See LICENSE file for details.
 This tool is designed for **defensive security purposes only**. It helps identify potentially leaked AWS credentials in repositories to prevent unauthorized access. Always handle detected credentials securely and rotate any exposed keys immediately.
 
 **Remember**: Finding and removing secrets from current files doesn't remove them from git history. Consider using tools like `git-filter-branch` or `BFG Repo-Cleaner` for complete secret removal.
+
+
+## Known Issues
+- the excluded path not working yet

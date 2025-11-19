@@ -322,7 +322,7 @@ export class GithubScanner {
   }
 
   private isPathExcluded(filePath: string): boolean {
-    if (!this.options.excludePaths || this.options.excludePaths.length === 0) {
+    if (!this.options.excludePaths?.length) {
       return false;
     }
 

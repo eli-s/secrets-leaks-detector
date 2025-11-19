@@ -76,7 +76,6 @@ app.post('/api/scan', async (req, res) => {
         stateManager.saveState(finalState);
         stateManager.saveResults(findings);
         activeScans.delete(scanKey);
-        console.log(`Scan completed for ${scanKey}: ${findings.length} findings`);
       })
       .catch((error) => {
         console.error(`Scan failed for ${scanKey}:`, error);
