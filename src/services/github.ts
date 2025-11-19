@@ -168,6 +168,11 @@ export class GithubScanner {
 
       for (const file of commit.files) {
         if (file.status === 'removed' || !file.patch) continue;
+        
+        // Skip scanner's own state files to avoid false positives
+        if (file.filename?.includes('.scanstate_') || file.filename?.includes('.scanresults_')) {
+          continue;
+        }
 
         const diffLines = this.extractDiffLines(file.patch);
         

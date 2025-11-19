@@ -54,17 +54,38 @@ export function detectAwsSecrets(content: string): { pattern: AwsSecretPattern; 
   
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex];
+    const lineFindings = new Set<string>(); // Track what we've already found on this line
     
-    for (const pattern of awsSecretPatterns) {
+    // Process patterns in priority order (longest/most specific first)
+    const sortedPatterns = [...awsSecretPatterns].sort((a, b) => {
+      // Session tokens first (longest), then others
+      if (a.name.includes('Session Token')) return -1;
+      if (b.name.includes('Session Token')) return 1;
+      return 0;
+    });
+    
+    for (const pattern of sortedPatterns) {
       const matches = line.match(pattern.pattern);
       if (matches) {
         for (const match of matches) {
-          if (isLikelySecret(match, pattern.name)) {
+          const trimmedMatch = match.trim();
+          
+          // Skip if we've already found a longer pattern that contains this match
+          let skipMatch = false;
+          for (const existingMatch of lineFindings) {
+            if (existingMatch !== trimmedMatch && existingMatch.includes(trimmedMatch)) {
+              skipMatch = true;
+              break;
+            }
+          }
+          
+          if (!skipMatch && isLikelySecret(trimmedMatch, pattern.name, line)) {
             findings.push({
               pattern,
-              match: match.trim(),
+              match: trimmedMatch,
               line: lineIndex + 1
             });
+            lineFindings.add(trimmedMatch);
           }
         }
       }
@@ -74,7 +95,7 @@ export function detectAwsSecrets(content: string): { pattern: AwsSecretPattern; 
   return findings;
 }
 
-function isLikelySecret(value: string, patternName: string): boolean {
+function isLikelySecret(value: string, patternName: string, fullContent: string): boolean {
   const lowercaseValue = value.toLowerCase();
   
   // Enhanced exclude patterns
@@ -104,14 +125,23 @@ function isLikelySecret(value: string, patternName: string): boolean {
     }
   }
   
+  // If this looks like a Secret Access Key (40 chars), check if it's part of a longer Session Token
+  if (patternName.includes('Secret Access Key (standalone)')) {
+    // Check if this 40-char string is contained within a longer token (200+ chars)
+    const sessionTokenPattern = /\b[A-Za-z0-9/+]{200,}={0,2}\b/;
+    const sessionTokenMatch = fullContent.match(sessionTokenPattern);
+    
+    if (sessionTokenMatch && sessionTokenMatch[0].includes(value)) {
+      // This 40-char string is part of a longer session token, skip it
+      return false;
+    }
+    
+    return validateSecretKeyFormat(value);
+  }
+  
   // Validate AWS Access Key format
   if (patternName.includes('Access Key ID')) {
     return validateAccessKeyFormat(value);
-  }
-  
-  // Validate Secret Access Key format
-  if (patternName.includes('Secret Access Key (standalone)')) {
-    return validateSecretKeyFormat(value);
   }
   
   // Validate Session Token format
