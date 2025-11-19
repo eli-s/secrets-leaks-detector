@@ -6,6 +6,7 @@ export interface AwsSecretFinding {
   secretType: string;
   secretValue: string;
   line: number;
+  action: 'added' | 'removed' | 'context';
 }
 
 export interface ScanState {

@@ -67,23 +67,24 @@ app.post('/api/scan', async (req, res) => {
       }
     }
 
-    const findings = await scanner.scanRepository();
-    
-    const finalState = scanner.getScanState();
-    stateManager.saveState(finalState);
-    stateManager.saveResults(findings);
+    // Start scanning asynchronously
+    scanner.scanRepository()
+      .then((findings) => {
+        const finalState = scanner.getScanState();
+        stateManager.saveState(finalState);
+        stateManager.saveResults(findings);
+        activeScans.delete(scanKey);
+        console.log(`Scan completed for ${scanKey}: ${findings.length} findings`);
+      })
+      .catch((error) => {
+        console.error(`Scan failed for ${scanKey}:`, error);
+        activeScans.delete(scanKey);
+      });
 
-    activeScans.delete(scanKey);
-
+    // Return immediately with in_progress status
     return res.json({
-      status: 'success',
-      findings,
-      scanState: {
-        totalCommitsScanned: finalState.totalCommitsScanned,
-        findingsCount: finalState.findingsCount,
-        lastProcessedCommit: finalState.lastProcessedCommit,
-        lastProcessedDate: finalState.lastProcessedDate
-      }
+      status: 'in_progress',
+      message: `Scan started for ${owner}/${repo}. Use /api/scan/${owner}/${repo}/status to check progress.`
     } as ScanResponse);
 
   } catch (error) {

@@ -79,6 +79,51 @@ export class GithubScanner {
 
   private async scanBranch(branch: string): Promise<AwsSecretFinding[]> {
     const findings: AwsSecretFinding[] = [];
+    
+    // Get all commits from the branch (GitHub returns newest first)
+    const allCommits = await this.getAllCommitsForBranch(branch);
+    
+    // Sort by commit time (newest first) - descending order
+    const sortedCommits = allCommits.sort((a, b) => 
+      new Date(b.commit.committer?.date || b.commit.author?.date || '').getTime() - 
+      new Date(a.commit.committer?.date || a.commit.author?.date || '').getTime()
+    );
+
+    let startIndex = 0;
+    
+    // If resuming, find where to start
+    if (this.scanState.lastProcessedCommit) {
+      startIndex = sortedCommits.findIndex(commit => 
+        commit.sha === this.scanState.lastProcessedCommit
+      );
+      if (startIndex >= 0) {
+        startIndex++; // Start after the last processed commit
+      } else {
+        startIndex = 0; // If not found, start from beginning
+      }
+    }
+
+    // Scan commits from startIndex onwards
+    for (let i = startIndex; i < sortedCommits.length; i++) {
+      const commit = sortedCommits[i];
+      
+      const commitFindings = await this.scanCommit(commit.sha);
+      findings.push(...commitFindings);
+      
+      this.scanState.totalCommitsScanned++;
+      this.scanState.findingsCount += commitFindings.length;
+      this.scanState.lastProcessedCommit = commit.sha;
+      this.scanState.lastProcessedDate = commit.commit.committer?.date || commit.commit.author?.date;
+
+      // Small delay between commits to be respectful
+      await this.delay(100);
+    }
+
+    return findings;
+  }
+
+  private async getAllCommitsForBranch(branch: string): Promise<any[]> {
+    const allCommits: any[] = [];
     let page = 1;
     const perPage = 100;
 
@@ -95,38 +140,16 @@ export class GithubScanner {
         );
 
         if (commits.length === 0) break;
-
-        const sortedCommits = commits.sort((a, b) => 
-          new Date(b.commit.committer?.date || b.commit.author?.date || '').getTime() - 
-          new Date(a.commit.committer?.date || a.commit.author?.date || '').getTime()
-        );
-
-        for (const commit of sortedCommits) {
-          if (this.scanState.lastProcessedCommit && 
-              commit.sha === this.scanState.lastProcessedCommit) {
-            return findings;
-          }
-
-          const commitFindings = await this.scanCommit(commit.sha);
-          findings.push(...commitFindings);
-          
-          this.scanState.totalCommitsScanned++;
-          this.scanState.findingsCount += commitFindings.length;
-          this.scanState.lastProcessedCommit = commit.sha;
-          this.scanState.lastProcessedDate = commit.commit.committer?.date || commit.commit.author?.date;
-
-          // Small delay between commits to be respectful
-          await this.delay(100);
-        }
-
+        
+        allCommits.push(...commits);
         page++;
       } catch (error) {
-        console.error(`Error scanning branch ${branch}:`, error);
+        console.error(`Error fetching commits for branch ${branch}:`, error);
         break;
       }
     }
 
-    return findings;
+    return allCommits;
   }
 
   private async scanCommit(commitSha: string): Promise<AwsSecretFinding[]> {
@@ -146,19 +169,23 @@ export class GithubScanner {
       for (const file of commit.files) {
         if (file.status === 'removed' || !file.patch) continue;
 
-        const addedLines = this.extractAddedLines(file.patch);
-        const secretFindings = detectAwsSecrets(addedLines.join('\n'));
-
-        for (const secretFinding of secretFindings) {
-          findings.push({
-            commitSha: commitSha,
-            commitDate: commit.commit.committer?.date || commit.commit.author?.date || '',
-            committer: commit.commit.committer?.name || commit.commit.author?.name || 'Unknown',
-            filename: file.filename || 'Unknown',
-            secretType: secretFinding.pattern.name,
-            secretValue: secretFinding.match,
-            line: secretFinding.line
-          });
+        const diffLines = this.extractDiffLines(file.patch);
+        
+        for (const diffLine of diffLines) {
+          const secretFindings = detectAwsSecrets(diffLine.content);
+          
+          for (const secretFinding of secretFindings) {
+            findings.push({
+              commitSha: commitSha,
+              commitDate: commit.commit.committer?.date || commit.commit.author?.date || '',
+              committer: commit.commit.committer?.name || commit.commit.author?.name || 'Unknown',
+              filename: file.filename || 'Unknown',
+              secretType: secretFinding.pattern.name,
+              secretValue: secretFinding.match,
+              line: diffLine.lineNumber,
+              action: diffLine.action
+            });
+          }
         }
       }
     } catch (error) {
@@ -213,17 +240,53 @@ export class GithubScanner {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  private extractAddedLines(patch: string): string[] {
+  private extractDiffLines(patch: string): Array<{content: string, action: 'added' | 'removed' | 'context', lineNumber: number}> {
     const lines = patch.split('\n');
-    const addedLines: string[] = [];
+    const diffLines: Array<{content: string, action: 'added' | 'removed' | 'context', lineNumber: number}> = [];
+    let lineNumber = 1;
 
     for (const line of lines) {
-      if (line.startsWith('+') && !line.startsWith('+++')) {
-        addedLines.push(line.substring(1));
+      // Skip diff headers (@@, +++, ---, etc.)
+      if (line.startsWith('@@') || line.startsWith('+++') || line.startsWith('---')) {
+        // Extract line number from @@ header if available
+        const lineMatch = line.match(/@@\s*-\d+(?:,\d+)?\s*\+?(\d+)/);
+        if (lineMatch) {
+          lineNumber = parseInt(lineMatch[1]);
+        }
+        continue;
+      }
+
+      let action: 'added' | 'removed' | 'context';
+      let content: string;
+
+      if (line.startsWith('+')) {
+        action = 'added';
+        content = line.substring(1);
+      } else if (line.startsWith('-')) {
+        action = 'removed'; 
+        content = line.substring(1);
+      } else if (line.startsWith(' ')) {
+        action = 'context';
+        content = line.substring(1);
+      } else {
+        // Handle lines without prefix
+        action = 'context';
+        content = line;
+      }
+
+      diffLines.push({
+        content,
+        action,
+        lineNumber: lineNumber
+      });
+
+      // Only increment line number for added and context lines
+      if (action !== 'removed') {
+        lineNumber++;
       }
     }
 
-    return addedLines;
+    return diffLines;
   }
 
   getScanState(): ScanState {
