@@ -67,22 +67,37 @@ describe('Server API', () => {
     });
 
     it('should return error if scan already in progress', async () => {
+      // Mock a slower scan to test conflict detection
+      const mockSlowScan = jest.fn().mockImplementation(() => 
+        new Promise(resolve => setTimeout(() => resolve([]), 100))
+      );
+      
+      const { GithubScanner } = require('../src/services/github');
+      GithubScanner.mockImplementation(() => ({
+        setScanState: jest.fn(),
+        scanRepository: mockSlowScan,
+        getScanState: jest.fn().mockReturnValue({
+          totalCommitsScanned: 10,
+          findingsCount: 0
+        })
+      }));
+
       // Start first scan
       const firstResponse = await request(app)
         .post('/api/scan')
         .send({
-          owner: 'testowner4',
-          repo: 'testrepo4',
+          owner: 'testowner5',
+          repo: 'testrepo5',
           token: 'testtoken'
         });
       expect(firstResponse.status).toBe(200);
 
-      // Try to start second scan immediately (before first completes)
+      // Try to start second scan immediately (should conflict)
       const response = await request(app)
         .post('/api/scan')
         .send({
-          owner: 'testowner4',
-          repo: 'testrepo4',
+          owner: 'testowner5',
+          repo: 'testrepo5',
           token: 'testtoken'
         });
 
