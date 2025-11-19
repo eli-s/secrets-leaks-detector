@@ -12,6 +12,7 @@ interface ScanRequest {
   token: string;
   includeNonMainBranches?: boolean;
   resume?: boolean;
+  excludePaths?: string[];
 }
 
 interface ScanResponse {
@@ -30,7 +31,7 @@ const activeScans = new Map<string, boolean>();
 
 app.post('/api/scan', async (req, res) => {
   try {
-    const { owner, repo, token, includeNonMainBranches = false, resume = false }: ScanRequest = req.body;
+    const { owner, repo, token, includeNonMainBranches = false, resume = false, excludePaths = [] }: ScanRequest = req.body;
 
     if (!owner || !repo || !token) {
       return res.status(400).json({
@@ -54,7 +55,8 @@ app.post('/api/scan', async (req, res) => {
       owner,
       repo,
       token,
-      includeNonMainBranches
+      includeNonMainBranches,
+      excludePaths
     };
 
     const scanner = new GithubScanner(options);

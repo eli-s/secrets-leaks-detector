@@ -1,4 +1,5 @@
 export interface AwsSecretFinding {
+  findingId: string;
   commitSha: string;
   commitDate: string;
   committer: string;
@@ -7,6 +8,7 @@ export interface AwsSecretFinding {
   secretValue: string;
   line: number;
   action: 'added' | 'removed' | 'context';
+  branchName: string;
 }
 
 export interface ScanState {
@@ -14,6 +16,8 @@ export interface ScanState {
   lastProcessedDate?: string;
   totalCommitsScanned: number;
   findingsCount: number;
+  currentBranch?: string;
+  processedBranches?: string[];
 }
 
 export interface GithubOptions {
@@ -21,6 +25,7 @@ export interface GithubOptions {
   repo: string;
   token: string;
   includeNonMainBranches?: boolean;
+  excludePaths?: string[];
 }
 
 export interface AwsSecretPattern {

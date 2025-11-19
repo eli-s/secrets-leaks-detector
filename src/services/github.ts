@@ -1,6 +1,7 @@
 import { Octokit } from '@octokit/rest';
 import { GithubOptions, AwsSecretFinding, ScanState } from '../models/types';
 import { detectAwsSecrets } from '../utils/patterns';
+import { generateFindingId } from '../utils/findingId';
 
 export class GithubScanner {
   private octokit: Octokit;
@@ -14,7 +15,8 @@ export class GithubScanner {
     });
     this.scanState = {
       totalCommitsScanned: 0,
-      findingsCount: 0
+      findingsCount: 0,
+      processedBranches: []
     };
   }
 
@@ -27,8 +29,14 @@ export class GithubScanner {
 
     for (const branch of branches) {
       try {
+        this.scanState.currentBranch = branch;
         const branchFindings = await this.scanBranch(branch);
         findings.push(...branchFindings);
+        
+        // Track processed branches
+        if (!this.scanState.processedBranches?.includes(branch)) {
+          this.scanState.processedBranches = [...(this.scanState.processedBranches || []), branch];
+        }
       } catch (error: any) {
         if (error.status === 404) {
           console.log(`Branch '${branch}' not found, skipping...`);
@@ -77,11 +85,11 @@ export class GithubScanner {
     }
   }
 
-  private async scanBranch(branch: string): Promise<AwsSecretFinding[]> {
+  private async scanBranch(branchName: string): Promise<AwsSecretFinding[]> {
     const findings: AwsSecretFinding[] = [];
     
     // Get all commits from the branch (GitHub returns newest first)
-    const allCommits = await this.getAllCommitsForBranch(branch);
+    const allCommits = await this.getAllCommitsForBranch(branchName);
     
     // Sort by commit time (newest first) - descending order
     const sortedCommits = allCommits.sort((a, b) => 
@@ -107,7 +115,7 @@ export class GithubScanner {
     for (let i = startIndex; i < sortedCommits.length; i++) {
       const commit = sortedCommits[i];
       
-      const commitFindings = await this.scanCommit(commit.sha);
+      const commitFindings = await this.scanCommit(commit.sha, branchName);
       findings.push(...commitFindings);
       
       this.scanState.totalCommitsScanned++;
@@ -152,7 +160,7 @@ export class GithubScanner {
     return allCommits;
   }
 
-  private async scanCommit(commitSha: string): Promise<AwsSecretFinding[]> {
+  private async scanCommit(commitSha: string, branchName: string): Promise<AwsSecretFinding[]> {
     const findings: AwsSecretFinding[] = [];
 
     try {
@@ -174,21 +182,32 @@ export class GithubScanner {
           continue;
         }
 
+        // Skip excluded paths
+        if (this.isPathExcluded(file.filename || '')) {
+          continue;
+        }
+
         const diffLines = this.extractDiffLines(file.patch);
         
         for (const diffLine of diffLines) {
           const secretFindings = detectAwsSecrets(diffLine.content);
           
           for (const secretFinding of secretFindings) {
+            const filename = file.filename || 'Unknown';
+            const secretValue = secretFinding.match;
+            const findingId = generateFindingId(branchName, filename, secretValue);
+            
             findings.push({
+              findingId: findingId,
               commitSha: commitSha,
               commitDate: commit.commit.committer?.date || commit.commit.author?.date || '',
               committer: commit.commit.committer?.name || commit.commit.author?.name || 'Unknown',
-              filename: file.filename || 'Unknown',
+              filename: filename,
               secretType: secretFinding.pattern.name,
-              secretValue: secretFinding.match,
+              secretValue: secretValue,
               line: diffLine.lineNumber,
-              action: diffLine.action
+              action: diffLine.action,
+              branchName: branchName
             });
           }
         }
@@ -300,5 +319,35 @@ export class GithubScanner {
 
   setScanState(state: ScanState): void {
     this.scanState = { ...state };
+  }
+
+  private isPathExcluded(filePath: string): boolean {
+    if (!this.options.excludePaths || this.options.excludePaths.length === 0) {
+      return false;
+    }
+
+    return this.options.excludePaths.some(excludePattern => {
+      // Convert glob pattern to regex
+      let pattern = excludePattern;
+      
+      // Handle ** first (matches any path segments including /)
+      pattern = pattern.replace(/\*\*/g, '__DOUBLE_WILDCARD__');
+      
+      // Escape special regex characters
+      pattern = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+      
+      // Handle wildcards - single * should become [^/]*
+      pattern = pattern.replace(/\*/g, '[^/]*');               // * -> [^/]*
+      pattern = pattern.replace(/__DOUBLE_WILDCARD__/g, '.*'); // ** -> .*  
+      pattern = pattern.replace(/\\\?/g, '.');                 // ? -> .
+      
+      try {
+        const regex = new RegExp(`^${pattern}$`);
+        return regex.test(filePath);
+      } catch (error) {
+        console.warn(`Invalid exclude pattern: ${excludePattern}`, error);
+        return false;
+      }
+    });
   }
 }

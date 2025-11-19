@@ -95,7 +95,8 @@ Content-Type: application/json
   "repo": "repository",
   "token": "ghp_your_github_token_here",
   "includeNonMainBranches": false,
-  "resume": false
+  "resume": false,
+  "excludePaths": ["**/test/**", "**/tests/**", "**/*.test.js"]
 }
 ```
 
@@ -139,6 +140,7 @@ GET /api/scan/:owner/:repo/results
   "status": "success",
   "findings": [
     {
+      "findingId": "a1b2c3d4e5f6789a",
       "commitSha": "91543df3ccf417683257acddbb8d266251403b4f",
       "commitDate": "2025-11-19T11:11:15Z",
       "committer": "developer",
@@ -146,7 +148,8 @@ GET /api/scan/:owner/:repo/results
       "secretType": "AWS Secret Access Key (standalone)",
       "secretValue": "wEaDNiq11oUzqitIGSp7CKsAUoecwG4UGUhDYbo+",
       "line": 15,
-      "action": "added"
+      "action": "added",
+      "branchName": "main"
     }
   ],
   "scanState": { ... }
@@ -181,6 +184,26 @@ curl -X POST http://localhost:3000/api/scan \
   }'
 ```
 
+#### Exclude Test Files and Directories
+```bash
+curl -X POST http://localhost:3000/api/scan \
+  -H "Content-Type: application/json" \
+  -d '{
+    "owner": "username",
+    "repo": "repository", 
+    "token": "ghp_token",
+    "excludePaths": [
+      "**/test/**",
+      "**/tests/**", 
+      "**/__tests__/**",
+      "**/*.test.js",
+      "**/*.spec.ts",
+      "**/node_modules/**",
+      "**/dist/**"
+    ]
+  }'
+```
+
 #### Resume Interrupted Scan
 ```bash
 curl -X POST http://localhost:3000/api/scan \
@@ -193,22 +216,128 @@ curl -X POST http://localhost:3000/api/scan \
   }'
 ```
 
+#### Complete Scan with All Options
+```bash
+curl -X POST http://localhost:3000/api/scan \
+  -H "Content-Type: application/json" \
+  -d '{
+    "owner": "username",
+    "repo": "repository", 
+    "token": "ghp_token",
+    "includeNonMainBranches": true,
+    "resume": false,
+    "excludePaths": [
+      "**/test/**",
+      "**/tests/**",
+      "**/*.test.js",
+      "**/node_modules/**"
+    ]
+  }'
+```
+
 ### Understanding Results
+
+#### Finding IDs and Tracking
+
+Each finding has a unique `findingId` generated from `hash(branchName + filename + secretValue)`. This enables:
+
+- **Lifecycle Tracking**: Same secret across different commits has the same ID
+- **Addition/Removal Detection**: Track when secrets are added vs. removed
+- **Deduplication**: Identify duplicate findings across scans
+- **Change Analysis**: Monitor secret exposure patterns
+
+**Example: Secret Lifecycle**
+```json
+[
+  {
+    "findingId": "a1b2c3d4e5f6789a",
+    "action": "added",
+    "commitSha": "abc123...",
+    "commitDate": "2023-11-15T10:00:00Z"
+  },
+  {
+    "findingId": "a1b2c3d4e5f6789a", 
+    "action": "context",
+    "commitSha": "def456...",
+    "commitDate": "2023-11-16T14:30:00Z"
+  },
+  {
+    "findingId": "a1b2c3d4e5f6789a",
+    "action": "removed", 
+    "commitSha": "ghi789...",
+    "commitDate": "2023-11-17T09:15:00Z"
+  }
+]
+```
 
 #### Action Types
 - **`"added"`**: Secret was introduced in this commit 🚨
 - **`"removed"`**: Secret was deleted in this commit ✅  
 - **`"context"`**: Secret exists in unchanged context lines ℹ️
 
+#### Path Exclusion Patterns
+
+The `excludePaths` parameter supports glob-like patterns to filter out files:
+
+| Pattern | Description | Examples |
+|---------|-------------|----------|
+| `**/test/**` | Any directory named "test" at any level | `src/test/config.js`, `app/test/mock.json` |
+| `**/*.test.js` | Any file ending with ".test.js" | `utils.test.js`, `src/api.test.js` |
+| `**/__tests__/**` | Jest test convention | `src/__tests__/utils.spec.js` |
+| `node_modules/**` | Exclude dependencies | `node_modules/package/file.js` |
+| `dist/**` | Exclude build output | `dist/bundle.js`, `dist/assets/style.css` |
+| `*.log` | Log files in root | `app.log`, `error.log` |
+
+**Common Exclusion Patterns:**
+```json
+{
+  "excludePaths": [
+    "**/test/**",           // Test directories
+    "**/tests/**",          // Test directories  
+    "**/__tests__/**",      // Jest test directories
+    "**/*.test.js",         // Test files
+    "**/*.spec.ts",         // Spec files
+    "**/*.test.tsx",        // React test files
+    "**/node_modules/**",   // Dependencies
+    "**/dist/**",           // Build output
+    "**/build/**",          // Build output
+    "**/.git/**",           // Git metadata
+    "**/coverage/**",       // Test coverage
+    "**/*.log"              // Log files
+  ]
+}
+```
+
+#### Analyzing Results by Finding ID
+
+```bash
+# 1. Get scan results
+curl http://localhost:3000/api/scan/user/repo/results > results.json
+
+# 2. Group findings by ID to track secret lifecycle
+cat results.json | jq '.findings | group_by(.findingId) | .[]'
+
+# 3. Find secrets that were added but never removed
+cat results.json | jq '.findings | group_by(.findingId) | map(select(any(.action == "added") and all(.action != "removed")))'
+
+# 4. Find recently added secrets (last 30 days)
+cat results.json | jq --arg date "$(date -d '30 days ago' -Iseconds)" '.findings | map(select(.action == "added" and .commitDate > $date))'
+```
+
 #### Example Workflow
 ```bash
-# 1. Start scan
-curl -X POST http://localhost:3000/api/scan -d '{"owner":"user","repo":"repo","token":"ghp_xxx"}'
+# 1. Start scan with path exclusions
+curl -X POST http://localhost:3000/api/scan -d '{
+  "owner": "user",
+  "repo": "repo", 
+  "token": "ghp_xxx",
+  "excludePaths": ["**/test/**", "**/*.test.js"]
+}'
 
 # 2. Monitor progress  
 curl http://localhost:3000/api/scan/user/repo/status
 
-# 3. Get final results
+# 3. Get final results and analyze
 curl http://localhost:3000/api/scan/user/repo/results
 
 # 4. Clean up when done
@@ -274,6 +403,8 @@ src/
 - **GithubScanner**: Handles repository scanning, commit analysis, and rate limiting
 - **StateManager**: Manages scan progress persistence and resume functionality  
 - **Pattern Detection**: Advanced AWS credential pattern matching with validation
+- **Finding ID Generation**: Creates unique identifiers for tracking secret lifecycle
+- **Path Exclusion**: Filters out unwanted files (tests, dependencies, build artifacts)
 - **Express Server**: RESTful API with async scanning and progress tracking
 
 ## ⚙️ Configuration

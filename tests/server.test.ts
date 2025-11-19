@@ -14,7 +14,9 @@ jest.mock('../src/services/github', () => ({
         secretType: 'AWS Access Key ID',
         secretValue: 'AKIATEST123456789012',
         line: 1,
-        action: 'added'
+        action: 'added',
+        branchName: 'main',
+        findingId: 'abc123def4567890'
       }
     ]),
     getScanState: jest.fn().mockReturnValue({
@@ -128,6 +130,20 @@ describe('Server API', () => {
           repo: 'testrepo3',
           token: 'testtoken',
           includeNonMainBranches: true
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe('in_progress');
+    });
+
+    it('should handle excludePaths parameter', async () => {
+      const response = await request(app)
+        .post('/api/scan')
+        .send({
+          owner: 'testowner4',
+          repo: 'testrepo4',
+          token: 'testtoken',
+          excludePaths: ['**/test/**', '**/tests/**', '**/*.test.js']
         });
 
       expect(response.status).toBe(200);

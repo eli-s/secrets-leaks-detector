@@ -8,8 +8,15 @@ export class StateManager {
 
   constructor(repositoryName: string) {
     const sanitizedName = repositoryName.replace(/[^a-zA-Z0-9-_]/g, '_');
-    this.stateFile = path.join(process.cwd(), `.scanstate_${sanitizedName}.json`);
-    this.resultsFile = path.join(process.cwd(), `.scanresults_${sanitizedName}.json`);
+    const resultsDir = path.join(process.cwd(), 'scan-results');
+    
+    // Ensure the results directory exists
+    if (!fs.existsSync(resultsDir)) {
+      fs.mkdirSync(resultsDir, { recursive: true });
+    }
+    
+    this.stateFile = path.join(resultsDir, `.scanstate_${sanitizedName}.json`);
+    this.resultsFile = path.join(resultsDir, `.scanresults_${sanitizedName}.json`);
   }
 
   saveState(state: ScanState): void {

@@ -77,6 +77,7 @@ describe('StateManager', () => {
     it('should save findings to file', () => {
       const testFindings: AwsSecretFinding[] = [
         {
+          findingId: 'test123abc456def',
           commitSha: 'abc123',
           commitDate: '2023-11-19T10:00:00Z',
           committer: 'testuser',
@@ -84,7 +85,8 @@ describe('StateManager', () => {
           secretType: 'AWS Access Key ID',
           secretValue: 'AKIATEST123456789012',
           line: 1,
-          action: 'added'
+          action: 'added',
+          branchName: 'main'
         }
       ];
 
@@ -101,6 +103,7 @@ describe('StateManager', () => {
     it('should load findings from file', () => {
       const testFindings: AwsSecretFinding[] = [
         {
+          findingId: 'test123abc456def',
           commitSha: 'abc123',
           commitDate: '2023-11-19T10:00:00Z',
           committer: 'testuser',
@@ -108,7 +111,8 @@ describe('StateManager', () => {
           secretType: 'AWS Access Key ID',
           secretValue: 'AKIATEST123456789012',
           line: 1,
-          action: 'added'
+          action: 'added',
+          branchName: 'main'
         }
       ];
 
