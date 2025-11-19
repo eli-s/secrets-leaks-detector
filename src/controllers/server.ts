@@ -26,7 +26,7 @@ interface ScanResponse {
   };
 }
 
-const activescans = new Map<string, boolean>();
+const activeScans = new Map<string, boolean>();
 
 app.post('/api/scan', async (req, res) => {
   try {
@@ -39,16 +39,16 @@ app.post('/api/scan', async (req, res) => {
       } as ScanResponse);
     }
 
-    const scankey = `${owner}/${repo}`;
+    const scanKey = `${owner}/${repo}`;
     
-    if (activescans.get(scankey)) {
+    if (activeScans.get(scanKey)) {
       return res.status(409).json({
         status: 'error',
         message: 'Scan already in progress for this repository'
       } as ScanResponse);
     }
 
-    activescans.set(scankey, true);
+    activeScans.set(scanKey, true);
 
     const options: GithubOptions = {
       owner,
@@ -58,37 +58,37 @@ app.post('/api/scan', async (req, res) => {
     };
 
     const scanner = new GithubScanner(options);
-    const statemanager = new StateManager(`${owner}_${repo}`);
+    const stateManager = new StateManager(`${owner}_${repo}`);
 
     if (resume) {
-      const savedstate = statemanager.loadstate();
-      if (savedstate) {
-        scanner.setScanState(savedstate);
+      const savedState = stateManager.loadState();
+      if (savedState) {
+        scanner.setScanState(savedState);
       }
     }
 
     const findings = await scanner.scanRepository();
     
-    const finalstate = scanner.getScanState();
-    statemanager.savestate(finalstate);
-    statemanager.saveresults(findings);
+    const finalState = scanner.getScanState();
+    stateManager.saveState(finalState);
+    stateManager.saveResults(findings);
 
-    activescans.delete(scankey);
+    activeScans.delete(scanKey);
 
     return res.json({
       status: 'success',
       findings,
       scanState: {
-        totalCommitsScanned: finalstate.totalCommitsScanned,
-        findingsCount: finalstate.findingsCount,
-        lastProcessedCommit: finalstate.lastProcessedCommit,
-        lastProcessedDate: finalstate.lastProcessedDate
+        totalCommitsScanned: finalState.totalCommitsScanned,
+        findingsCount: finalState.findingsCount,
+        lastProcessedCommit: finalState.lastProcessedCommit,
+        lastProcessedDate: finalState.lastProcessedDate
       }
     } as ScanResponse);
 
   } catch (error) {
-    const scankey = `${req.body.owner}/${req.body.repo}`;
-    activescans.delete(scankey);
+    const scanKey = `${req.body.owner}/${req.body.repo}`;
+    activeScans.delete(scanKey);
     
     return res.status(500).json({
       status: 'error',
@@ -99,30 +99,30 @@ app.post('/api/scan', async (req, res) => {
 
 app.get('/api/scan/:owner/:repo/status', (req, res) => {
   const { owner, repo } = req.params;
-  const scankey = `${owner}/${repo}`;
-  const isinprogress = activescans.get(scankey) || false;
+  const scanKey = `${owner}/${repo}`;
+  const isInProgress = activeScans.get(scanKey) || false;
 
-  const statemanager = new StateManager(`${owner}_${repo}`);
-  const savedstate = statemanager.loadstate();
-  const savedresults = statemanager.loadresults();
+  const stateManager = new StateManager(`${owner}_${repo}`);
+  const savedState = stateManager.loadState();
+  const savedResults = stateManager.loadResults();
 
   return res.json({
-    status: isinprogress ? 'in_progress' : 'success',
-    findings: savedresults,
-    scanState: savedstate ? {
-      totalCommitsScanned: savedstate.totalCommitsScanned,
-      findingsCount: savedstate.findingsCount,
-      lastProcessedCommit: savedstate.lastProcessedCommit,
-      lastProcessedDate: savedstate.lastProcessedDate
+    status: isInProgress ? 'in_progress' : 'success',
+    findings: savedResults,
+    scanState: savedState ? {
+      totalCommitsScanned: savedState.totalCommitsScanned,
+      findingsCount: savedState.findingsCount,
+      lastProcessedCommit: savedState.lastProcessedCommit,
+      lastProcessedDate: savedState.lastProcessedDate
     } : undefined
   } as ScanResponse);
 });
 
 app.get('/api/scan/:owner/:repo/results', (req, res) => {
   const { owner, repo } = req.params;
-  const statemanager = new StateManager(`${owner}_${repo}`);
-  const findings = statemanager.loadresults();
-  const state = statemanager.loadstate();
+  const stateManager = new StateManager(`${owner}_${repo}`);
+  const findings = stateManager.loadResults();
+  const state = stateManager.loadState();
 
   return res.json({
     status: 'success',
@@ -138,12 +138,12 @@ app.get('/api/scan/:owner/:repo/results', (req, res) => {
 
 app.delete('/api/scan/:owner/:repo', (req, res) => {
   const { owner, repo } = req.params;
-  const scankey = `${owner}/${repo}`;
+  const scanKey = `${owner}/${repo}`;
   
-  activescans.delete(scankey);
+  activeScans.delete(scanKey);
   
-  const statemanager = new StateManager(`${owner}_${repo}`);
-  statemanager.cleanup();
+  const stateManager = new StateManager(`${owner}_${repo}`);
+  stateManager.cleanup();
 
   return res.json({
     status: 'success',

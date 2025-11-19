@@ -3,26 +3,26 @@ import * as path from 'path';
 import { ScanState, AwsSecretFinding } from '../models/types';
 
 export class StateManager {
-  private statefile: string;
-  private resultsfile: string;
+  private stateFile: string;
+  private resultsFile: string;
 
-  constructor(repositoryname: string) {
-    const sanitizedname = repositoryname.replace(/[^a-zA-Z0-9-_]/g, '_');
-    this.statefile = path.join(process.cwd(), `.scanstate_${sanitizedname}.json`);
-    this.resultsfile = path.join(process.cwd(), `.scanresults_${sanitizedname}.json`);
+  constructor(repositoryName: string) {
+    const sanitizedName = repositoryName.replace(/[^a-zA-Z0-9-_]/g, '_');
+    this.stateFile = path.join(process.cwd(), `.scanstate_${sanitizedName}.json`);
+    this.resultsFile = path.join(process.cwd(), `.scanresults_${sanitizedName}.json`);
   }
 
-  savestate(state: ScanState): void {
+  saveState(state: ScanState): void {
     try {
-      fs.writeFileSync(this.statefile, JSON.stringify(state, null, 2));
+      fs.writeFileSync(this.stateFile, JSON.stringify(state, null, 2));
     } catch (error) {
     }
   }
 
-  loadstate(): ScanState | null {
+  loadState(): ScanState | null {
     try {
-      if (fs.existsSync(this.statefile)) {
-        const data = fs.readFileSync(this.statefile, 'utf8');
+      if (fs.existsSync(this.stateFile)) {
+        const data = fs.readFileSync(this.stateFile, 'utf8');
         return JSON.parse(data);
       }
     } catch (error) {
@@ -30,17 +30,17 @@ export class StateManager {
     return null;
   }
 
-  saveresults(findings: AwsSecretFinding[]): void {
+  saveResults(findings: AwsSecretFinding[]): void {
     try {
-      fs.writeFileSync(this.resultsfile, JSON.stringify(findings, null, 2));
+      fs.writeFileSync(this.resultsFile, JSON.stringify(findings, null, 2));
     } catch (error) {
     }
   }
 
-  loadresults(): AwsSecretFinding[] {
+  loadResults(): AwsSecretFinding[] {
     try {
-      if (fs.existsSync(this.resultsfile)) {
-        const data = fs.readFileSync(this.resultsfile, 'utf8');
+      if (fs.existsSync(this.resultsFile)) {
+        const data = fs.readFileSync(this.resultsFile, 'utf8');
         return JSON.parse(data);
       }
     } catch (error) {
@@ -50,11 +50,11 @@ export class StateManager {
 
   cleanup(): void {
     try {
-      if (fs.existsSync(this.statefile)) {
-        fs.unlinkSync(this.statefile);
+      if (fs.existsSync(this.stateFile)) {
+        fs.unlinkSync(this.stateFile);
       }
-      if (fs.existsSync(this.resultsfile)) {
-        fs.unlinkSync(this.resultsfile);
+      if (fs.existsSync(this.resultsFile)) {
+        fs.unlinkSync(this.resultsFile);
       }
     } catch (error) {
     }
