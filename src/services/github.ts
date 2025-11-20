@@ -204,7 +204,6 @@ export class GithubScanner {
               committer: commit.commit.committer?.name || commit.commit.author?.name || 'Unknown',
               filename: filename,
               secretType: secretFinding.pattern.name,
-              secretValue: secretValue,
               line: diffLine.lineNumber,
               action: diffLine.action,
               branchName: branchName

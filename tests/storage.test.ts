@@ -83,7 +83,6 @@ describe('StateManager', () => {
           committer: 'testuser',
           filename: 'test.js',
           secretType: 'AWS Access Key ID',
-          secretValue: 'AKIATEST123456789012',
           line: 1,
           action: 'added',
           branchName: 'main'
@@ -109,7 +108,6 @@ describe('StateManager', () => {
           committer: 'testuser',
           filename: 'test.js',
           secretType: 'AWS Access Key ID',
-          secretValue: 'AKIATEST123456789012',
           line: 1,
           action: 'added',
           branchName: 'main'

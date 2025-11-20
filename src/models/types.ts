@@ -5,7 +5,6 @@ export interface AwsSecretFinding {
   committer: string;
   filename: string;
   secretType: string;
-  secretValue: string;
   line: number;
   action: 'added' | 'removed' | 'context';
   branchName: string;
